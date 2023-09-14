@@ -35,8 +35,8 @@ const P₀ = diagm([1.0 / α * ones(10 * n_b); 1.0 / β * ones(6)])
 const Δ₀ = zeros(dim_θ)
 
 Γ_stack_D = [Y_stack B_stack Bc_stack]
-Γ_stack = [Γ_stack_D[(i-1)*dim_τ+1:i*dim_τ, :] for i in eachindex(t)]
-τ_stack = [τ_stack_D[(i-1)*dim_τ+1:i*dim_τ] for i in eachindex(t)]
+const Γ_stack = [Γ_stack_D[(i-1)*dim_τ+1:i*dim_τ, :] for i in eachindex(t)]
+const τ_stack = [τ_stack_D[(i-1)*dim_τ+1:i*dim_τ] for i in eachindex(t)]
 
 ## Fuction definition
 function RLS_l2(θ̂_prev, P_prev, τ_current, Γ_current, W)
