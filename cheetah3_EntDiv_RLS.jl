@@ -78,19 +78,22 @@ end
 #     return blockdiag(α * D_σ_Hess..., sparse(β * I(6)))
 # end
 
-function R_grad_diff_Hess(θ_prev, θ_up, α, β, n_b, L_unit)
-    Φ_prev = reshape(θ_prev[1:10*n_b], 10, n_b)
-    ψ_prev = θ_prev[10*n_b+1:end]
+function R_grad_diff_Hess(θ_up, ψ_prev, L_prod_prev, L_unit, α, β, n_b)
     Φ_up = reshape(θ_up[1:10*n_b], 10, n_b)
     ψ_up = θ_up[10*n_b+1:end]
-    
-    L_prod_prev = [ϕ2L(Φ_prev[:, i]) \ L_unit[n] for i in 1:n_b, n in 1:10]
+
     L_prod_up = [ϕ2L(Φ_up[:, i]) \ L_unit[n] for i in 1:n_b, n in 1:10]
 
-    D_σ_grad_diff = [[tr( L_prod_prev[i, n] - L_prod_up[i, n] ) for n in 1:10] for i in 1:n_b]
+    D_σ_grad_diff = [[tr(L_prod_prev[i, n] - L_prod_up[i, n]) for n in 1:10] for i in 1:n_b]
     R_grad_diff = [α * vcat(D_σ_grad_diff...); β * (ψ_up - ψ_prev)]
-   
-    U_D_σ_Hess = [[if m<=n tr( L_prod_up[i, m] * L_prod_up[i, n] ) else 0.0 end for m in 1:10, n in 1:10] for i in 1:n_b]
+
+    U_D_σ_Hess = [[
+        if m <= n
+            tr(L_prod_up[i, m] * L_prod_up[i, n])
+        else
+            0.0
+        end for m in 1:10, n in 1:10
+    ] for i in 1:n_b]
     D_σ_Hess = [sparse(U_D_σ_Hess[i] + U_D_σ_Hess[i]' - diagm(diag(U_D_σ_Hess[i]))) for i in 1:n_b]
     R_Hess = blockdiag(α * D_σ_Hess..., sparse(β * I(6)))
 
@@ -102,13 +105,14 @@ function RLS_ldetdiv(θ̂_prev, Ω_prev, τ_current, Γ_current, W, G, ϵ, Δ₀
 
     Δ = Δ₀
     l = 0
+    Φ_prev = reshape(θ̂_prev[1:10*n_b], 10, n_b)
+    ψ_prev = θ̂_prev[10*n_b+1:end]
+    L_prod_prev = [ϕ2L(Φ_prev[:, i]) \ L_unit[n] for i in 1:n_b, n in 1:10]
     while true
-        (R_grad_diff, R_Hess) =  R_grad_diff_Hess(θ̂_prev, θ̂_prev + Δ, α, β, n_b, L_unit)
+        (R_grad_diff, R_Hess) = R_grad_diff_Hess(θ̂_prev + Δ, ψ_prev, L_prod_prev, L_unit, α, β, n_b)
         J_grad = Γ_current' * W * (Γ_current * θ̂_prev - τ_current) + Ω_current * Δ + R_grad_diff
         J_Hess = Ω_current + R_Hess
-        # J_grad = Γ_current' * W * (Γ_current * θ̂_prev - τ_current) + Ω_current * Δ + R_grad(θ̂_prev + Δ, θ̂₀, α, β, n_b) - R_grad(θ̂_prev, θ̂₀, α, β, n_b)
-        # J_Hess = Ω_current + R_Hess(θ̂_prev + Δ, α, β, n_b)
-        
+
         δ_current = -J_Hess \ J_grad
         λ² = -dot(J_grad, δ_current)
         if λ² / 2.0 <= ϵ
@@ -156,10 +160,10 @@ function main(fₛ; flag_alg=1, flag_prog=0, flag_plot=0)
             P_prev = P_current
 
         elseif flag_alg == 2
-            @timed v_current = RLS_ldetdiv(θ̂_prev, Ω_prev, τ_current, Γ_current, W * dt_resample / dt_save, G, ϵ, Δ₀, α, β, γ, n_b, L_unit)
+            v_current = @timed RLS_ldetdiv(θ̂_prev, Ω_prev, τ_current, Γ_current, W * dt_resample / dt_save, G, ϵ, Δ₀, α, β, γ, n_b, L_unit)
             (θ̂_current, Ω_current, l_current) = v_current.value
             l_f[k] = l_current
-            T_elap[k] = v_current.time
+            T_elap[k] = v_current.time - v_current.gctime
             Ω_prev = Ω_current
         else
             break
@@ -206,11 +210,11 @@ function main(fₛ; flag_alg=1, flag_prog=0, flag_plot=0)
         savefig(f_τ_f, "Fig_tau_f_$(flag_alg).pdf")
     end
 
-    return (t_cons=t_cons, RMS_θ̃=RMS_θ̃, RMS_τ̃=RMS_τ̃, RMS_τ̃_f=RMS_τ̃_f, norm_θ̃=norm_θ̃, norm_τ̃=norm_τ̃, norm_τ̃_f=norm_τ̃_f, θ̂=θ̂, τ̂=τ̂, τ̂_f=τ̂_f, τ=τ, l_f=l_f, T_elap = T_elap)
+    return (t_cons=t_cons, RMS_θ̃=RMS_θ̃, RMS_τ̃=RMS_τ̃, RMS_τ̃_f=RMS_τ̃_f, norm_θ̃=norm_θ̃, norm_τ̃=norm_τ̃, norm_τ̃_f=norm_τ̃_f, θ̂=θ̂, τ̂=τ̂, τ̂_f=τ̂_f, τ=τ, l_f=l_f, T_elap=T_elap)
 end
 
 ## Single Run Simulation 
-sim_D = main(1e2; flag_alg=2, flag_prog=0, flag_plot=0)
+# sim_D = main(1e2; flag_alg=2, flag_prog=0, flag_plot=0)
 
 ## Benchmark Simulation
 alg_list = [1, 2]
@@ -253,9 +257,9 @@ f_norm = plot(f_norm_θ̃, f_norm_τ̃, layout=(2, 1))
 display(f_norm)
 savefig(f_norm, "Fig_norm_1000Hz.pdf")
 
-f_norm = plot(f_norm_θ̃, f_norm_τ̃, f_T, layout=(3, 1))
-display(f_norm)
-savefig(f_norm, "Fig_norm_T_1000Hz.pdf")
+f_norm_T = plot(f_norm_θ̃, f_norm_τ̃, f_T, layout=(3, 1))
+display(f_norm_T)
+savefig(f_norm_T, "Fig_norm_T_1000Hz.pdf")
 
 f_τ = plot(sim_D[1, 4].t_cons, hcat(sim_D[1, 4].τ̂...)', layout=(dim_τ, 1), label=[:false :false "RLS-l2"], xlabel="\$t\$ [s]", ylabel=["\$\\tau\\left(t;t\\right)_{\\textrm{Ab/Ad}}\$" "\$\\tau\\left(t;t\\right)_{\\textrm{Hip}}\$" "\$\\tau\\left(t;t\\right)_{\\textrm{Knee}}\$"])
 plot!(f_τ, sim_D[2, 4].t_cons, hcat(sim_D[2, 4].τ̂...)', layout=(dim_τ, 1), label=[:false :false "RLS-ldetdiv"])
@@ -282,7 +286,7 @@ end
 
 f_norm_θ̃_f = scatter(fₛ_list, [sim_D[i_alg, i_f].norm_θ̃[end] for i_alg in eachindex(alg_list), i_f in eachindex(fₛ_list)]', xlabel="\$f_{s}\$ [Hz]", ylabel="\$|| \\tilde{\\theta}\\left(t_{f}\\right) ||_{2}\$", xaxis=:log, xticks=fₛ_list, label=:false)
 
-f_feas = scatter(fₛ_list, flag_feas', xlabel="\$f_{s}\$ [Hz]", ylabel="\$\\mathcal{I}_{cons}\$", xaxis=:log, ylims=(-0.1, 1.1), xticks=fₛ_list, yticks = [0,1], label=:false)
+f_feas = scatter(fₛ_list, flag_feas', xlabel="\$f_{s}\$ [Hz]", ylabel="\$\\mathcal{I}_{cons}\$", xaxis=:log, ylims=(-0.1, 1.1), xticks=fₛ_list, yticks=[0, 1], label=:false)
 
 f_RMS_τ̃ = scatter(fₛ_list, [sim_D[i_alg, i_f].RMS_τ̃ for i_alg in eachindex(alg_list), i_f in eachindex(fₛ_list)]', xlabel="\$f_{s}\$ [Hz]", ylabel="\$|| \\tilde{\\tau}\\left(t;t\\right) ||_{rms}\$", xaxis=:log, xticks=fₛ_list, label=:false)
 
@@ -292,4 +296,8 @@ f_RMS = plot(f_feas, f_norm_θ̃_f, f_RMS_τ̃, f_RMS_τ̃_f, layout=(4, 1), siz
 display(f_RMS)
 savefig(f_RMS, "Fig_feas_RMS.pdf")
 
-
+id_N1 = findall(x->x==1, sim_D[2, 4].l_f)
+id_N2 = findall(x->x==2, sim_D[2, 4].l_f)
+T_N1 = sim_D[2, 4].T_elap[id_N1]
+T_N2 = sim_D[2, 4].T_elap[id_N2]
+@show (mean(T_N1), std(T_N1), mean(T_N2), std(T_N2));
