@@ -1,5 +1,5 @@
 # EntDiv_RLS
-Recursive Least Squares with Log-Determinant Divergence Regularisation for Online Inertia Identification
+Namhoon Cho, Taeyoon Lee, and Hyo-Sang Shin, ``Recursive Least Squares with Log-Determinant Divergence Regularisation for Online Inertia Identification,'' IEEE International Conference on Robotics and Automation, Yokohama, Japan, May 2024.
 
 # How to Use This Code
 Step 1. Clone https://github.com/ROAM-Lab-ND/inertia_identification_minimal_examples to a directory (DIR).
